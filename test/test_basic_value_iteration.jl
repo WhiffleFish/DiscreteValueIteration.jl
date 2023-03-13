@@ -85,13 +85,6 @@ function test_not_include_Q()
     return isapprox(ut, policy.util, rtol=1e-3)
 end
 
-function test_warning()
-    mdp = LegacyGridWorld()
-    solver = ValueIterationSolver()
-    println("There should be a warning below: ")
-    solve(solver, mdp, verbose=true)
-end
-
 function test_type_stability()
     mdp = LegacyGridWorld()
     solver = ValueIterationSolver()
@@ -103,6 +96,5 @@ end
 @test test_simple_grid() == true
 @test test_init_solution() == true
 @test test_not_include_Q() == true
-test_warning()
 @test_throws String solve(ValueIterationSolver(), TigerPOMDP())
 @test test_type_stability() == true

@@ -10,20 +10,12 @@ The solver type. Contains the following parameters that can be passed as keyword
     - include_Q::Bool, if set to true, the solver outputs the Q values in addition to the utility and the policy (default true)
     - init_util::Vector{Float64}, provides a custom initialization of the utility vector. (initializes utility to 0 by default)
 """
-mutable struct ValueIterationSolver <: Solver
-    max_iterations::Int64 # max number of iterations
-    belres::Float64 # the Bellman Residual
-    verbose::Bool 
-    include_Q::Bool
-    init_util::Vector{Float64}
-end
-# Default constructor
-function ValueIterationSolver(;max_iterations::Int64 = 100, 
-                               belres::Float64 = 1e-3,
-                               verbose::Bool = false,
-                               include_Q::Bool = true,
-                               init_util::Vector{Float64}=Vector{Float64}(undef, 0))    
-    return ValueIterationSolver(max_iterations, belres, verbose, include_Q, init_util)
+Base.@kwdef mutable struct ValueIterationSolver <: Solver
+    max_iterations::Int         = 100 # max number of iterations
+    belres::Float64             = 1e-3 # Bellman Residual
+    verbose::Bool               = false
+    include_Q::Bool             = true
+    init_util::Vector{Float64}  = Vector{Float64}(undef, 0)
 end
 
 @POMDP_require solve(solver::ValueIterationSolver, mdp::Union{MDP,POMDP}) begin
@@ -61,13 +53,8 @@ end
 # policy = ValueIterationPolicy(mdp)
 # solve(solver, mdp, policy, verbose=true)
 #####################################################################
-function solve(solver::ValueIterationSolver, mdp::MDP; kwargs...)
-    
-    # deprecation warning - can be removed when Julia 1.0 is adopted
-    if !isempty(kwargs)
-        @warn("Keyword args for solve(::ValueIterationSolver, ::MDP) are no longer supported. For verbose output, use the verbose option in the ValueIterationSolver")
-    end
-    
+function solve(solver::ValueIterationSolver, mdp::MDP)
+
     @warn_requirements solve(solver, mdp)
 
     # solver parameters
@@ -97,7 +84,7 @@ function solve(solver::ValueIterationSolver, mdp::MDP; kwargs...)
     state_space = ordered_states(mdp)
 
     # main loop
-    for i = 1:max_iterations
+    for i in 1:max_iterations
         residual = 0.0
         iter_time = @elapsed begin
         # state loop
@@ -116,7 +103,7 @@ function solve(solver::ValueIterationSolver, mdp::MDP; kwargs...)
                     dist = transition(mdp, s, a) # creates distribution over neighbors
                     u = 0.0
                     for (sp, p) in weighted_iterator(dist)
-                        p == 0.0 ? continue : nothing # skip if zero prob
+                        iszero(p) && continue # skip if zero prob
                         r = reward(mdp, s, a, sp)
                         isp = stateindex(mdp, sp)
                         u += p * (r + discount_factor * util[isp])
@@ -126,18 +113,21 @@ function solve(solver::ValueIterationSolver, mdp::MDP; kwargs...)
                         max_util = new_util
                         pol[istate] = iaction
                     end
-                    include_Q ? (qmat[istate, iaction] = new_util) : nothing
+                    include_Q && (qmat[istate, iaction] = new_util)
                 end # action
                 # update the value array
                 util[istate] = max_util
                 diff = abs(max_util - old_util)
-                diff > residual ? (residual = diff) : nothing
+                diff > residual && (residual = diff)
             end
         end # state
         end # time
         total_time += iter_time
-        solver.verbose ? @printf("[Iteration %-4d] residual: %10.3G | iteration runtime: %10.3f ms, (%10.3G s total)\n", i, residual, iter_time*1000.0, total_time) : nothing
-        residual < belres ? break : nothing
+        solver.verbose && @printf(
+            "[Iteration %-4d] residual: %10.3G | iteration runtime: %10.3f ms, (%10.3G s total)\n",
+            i, residual, iter_time*1000.0, total_time
+        )
+        residual < belres && break
     end # main
     if include_Q
         return ValueIterationPolicy(mdp, qmat, util, pol)
